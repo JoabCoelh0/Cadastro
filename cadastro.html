@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cadastro</title>
+</head>
+<body>
+  <h1>Cadastro de Usuário</h1>
+  <form id="formCadastro">
+    <label>Nome: <input type="text" id="nome" required /></label><br /><br />
+    <label>Email: <input type="email" id="email" required /></label><br /><br />
+    <label>Senha: <input type="password" id="senha" required /></label><br /><br />
+    <button type="submit">Cadastrar</button>
+  </form>
+  <p id="mensagem"></p>
+
+  <script>
+    const form = document.getElementById('formCadastro');
+    const mensagem = document.getElementById('mensagem');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const nome = document.getElementById('nome').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const senha = document.getElementById('senha').value.trim();
+
+      try {
+        const res = await fetch('http://localhost:3000/cadastro', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, email, senha }),
+        });
+
+        const data = await res.json();
+
+        if(res.ok){
+          mensagem.style.color = 'green';
+          mensagem.textContent = data.message;
+          form.reset();
+        } else {
+          mensagem.style.color = 'red';
+          mensagem.textContent = data.error || 'Erro desconhecido';
+        }
+      } catch (err) {
+        mensagem.style.color = 'red';
+        mensagem.textContent = 'Erro na comunicação com o servidor.';
+      }
+    });
+  </script>
+</body>
+</html>
