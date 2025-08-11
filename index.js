@@ -1,51 +1,80 @@
-require("dotenv").config();
-const express = require("express");
-const bcrypt = require("bcrypt");
-const { Pool } = require("pg");
-const path = require("path");
+// index.js
+require('dotenv').config();
+const express = require('express');
+const oracledb = require('oracledb');
+const bcrypt = require('bcrypt');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "public")));
 
-const pool = new Pool({
-  host: process.env.PGHOST,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-  port: process.env.PGPORT
-});
+// Configurar pasta para arquivos estáticos (frontend)
+app.use(express.static(path.join(__dirname, 'public')));
 
-pool.query(`
-  CREATE TABLE IF NOT EXISTS usuarios (
-    id SERIAL PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    senha TEXT NOT NULL
-  )
-`);
+// Config Oracle DB
+const dbConfig = {
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  connectString: process.env.DB_CONNECT_STRING // exemplo: "localhost/XEPDB1"
+};
 
-app.post("/cadastro", async (req, res) => {
-  const { email, senha } = req.body;
-  const hash = await bcrypt.hash(senha, 10);
+// Rota cadastro
+app.post('/register', async (req, res) => {
+  const { username, password } = req.body;
   try {
-    await pool.query("INSERT INTO usuarios (email, senha) VALUES ($1, $2)", [email, hash]);
-    res.redirect("/");
-  } catch {
-    res.send("Erro: usuário já existe.");
+    const connection = await oracledb.getConnection(dbConfig);
+
+    // Criptografa senha
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insere usuário no banco
+    await connection.execute(
+      `INSERT INTO clientes (username, password) VALUES (:username, :password)`,
+      [username, hashedPassword],
+      { autoCommit: true }
+    );
+
+    await connection.close();
+    res.json({ message: 'Cadastro realizado com sucesso!' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro no cadastro' });
   }
 });
 
-app.post("/login", async (req, res) => {
-  const { email, senha } = req.body;
-  const result = await pool.query("SELECT * FROM usuarios WHERE email=$1", [email]);
-  if (result.rows.length === 0) return res.send("Usuário não encontrado");
+// Rota login
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const connection = await oracledb.getConnection(dbConfig);
 
-  const match = await bcrypt.compare(senha, result.rows[0].senha);
-  if (match) res.send(`Bem-vindo, ${email}`);
-  else res.send("Senha incorreta");
+    // Busca usuário no banco
+    const result = await connection.execute(
+      `SELECT password FROM clientes WHERE username = :username`,
+      [username]
+    );
+
+    await connection.close();
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Usuário não encontrado' });
+    }
+
+    const hashedPassword = result.rows[0][0];
+
+    // Compara senha
+    const match = await bcrypt.compare(password, hashedPassword);
+    if (!match) {
+      return res.status(401).json({ error: 'Senha incorreta' });
+    }
+
+    res.json({ message: `Bem-vindo, ${username}!` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro no login' });
+  }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Servidor rodando...");
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
